@@ -35,6 +35,15 @@ class MobileClient {
     this.clientId = clientId;
     this.fcmToken = fcmToken;
   }
+
+  @Override
+  public String toString() {
+    return "MobileClient{" +
+        "session=" + session +
+        ", clientId='" + clientId + '\'' +
+        ", fcmToken='" + fcmToken + '\'' +
+        '}';
+  }
 }
 
 @ServerEndpoint("/")
@@ -46,10 +55,10 @@ public class WebSocketServer {
   private static Map<String, MobileClient> mobileClients =
       new HashMap<String, MobileClient>();
 
-  String getOTP() {
+  String getOTP(String otp) {
     JSONObject jsonObject = new JSONObject();
     jsonObject.put("type", ResponseTypes.SENT_OTP);
-    jsonObject.put("data", 12345);
+    jsonObject.put("data", otp);
     return jsonObject.toString();
   }
 
@@ -94,12 +103,23 @@ public class WebSocketServer {
         session.getBasicRemote().sendText(sendFCMAcknowledgement());
         break;
       case RequestTypes.REQUEST_OTP:
-        System.out.println(mobileClients);
+//        System.out.println(mobileClients);
         if (mobileClients.size() == 0) {
           session.getBasicRemote().sendText(noMobileClients());
         } else {
-          mobileClients.get(object.get("clientId").toString()).session.getBasicRemote().sendText(getOTP());
-          session.getBasicRemote().sendText(sentOTPToMobileClients());
+          MobileClient client = mobileClients.get(object.get("clientId").toString());
+          if (client != null) {
+            String otp = generateOTP();
+            try {
+              client.session.getBasicRemote().sendText(getOTP(otp));
+            }catch (Exception e){
+              session.getBasicRemote().sendText(clientIsOffline());
+            }
+            FCM.sendNotification(client.fcmToken, otp);
+            session.getBasicRemote().sendText(sentOTPToMobileClients());
+          } else {
+            session.getBasicRemote().sendText(noMobileClients());
+          }
         }
         break;
       case RequestTypes.VALIDATE_OTP:
@@ -114,6 +134,17 @@ public class WebSocketServer {
         jsonObject.put("data", "Sorry buddy, I can't understand you");
         session.getBasicRemote().sendText(jsonObject.toString());
     }
+  }
+
+  private String clientIsOffline() {
+    JSONObject jsonObject = new JSONObject();
+    jsonObject.put("type", ResponseTypes.SENT_OTP);
+    jsonObject.put("data", "Client is offline");
+    return jsonObject.toString();
+  }
+
+  private String generateOTP(){
+    return "123456";
   }
 
   private String sendFCMAcknowledgement() {
